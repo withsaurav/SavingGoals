@@ -325,6 +325,94 @@ async def dashboard(user: dict = Depends(get_current_user)):
         "recent": sorted(txs, key=lambda x: x["date"], reverse=True)[:5],
     }
 
+# -- Month archives (close-out) --
+@api.post("/months/close")
+async def close_month(user: dict = Depends(get_current_user), month: Optional[str] = None):
+    """Snapshot the given month (default: current) and clear those transactions.
+    Goals are NOT touched — they carry forward as-is."""
+    if not month:
+        month = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    existing = await db.month_archives.find_one({"user_id": user["id"], "month": month})
+    if existing:
+        raise HTTPException(status_code=400, detail=f"{month} is already archived")
+
+    # Snapshot of the dashboard (uses current month logic, so override month filter)
+    txs = await db.transactions.find(
+        {"user_id": user["id"], "date": {"$regex": f"^{month}"}},
+        {"_id": 0},
+    ).to_list(5000)
+
+    if not txs:
+        raise HTTPException(status_code=400, detail=f"No transactions to archive for {month}")
+
+    income = sum(t["amount"] for t in txs if t["type"] == "income")
+    expenses = sum(t["amount"] for t in txs if t["type"] == "expense")
+    by_bucket = {"needs": 0, "wants": 0, "savings": 0}
+    by_category = {}
+    for t in txs:
+        if t["type"] == "expense":
+            by_bucket[t.get("bucket", "needs")] = by_bucket.get(t.get("bucket", "needs"), 0) + t["amount"]
+            by_category[t["category"]] = by_category.get(t["category"], 0) + t["amount"]
+
+    salary = user.get("monthly_salary", 0)
+    needs_pct = user.get("needs_pct", 50)
+    wants_pct = user.get("wants_pct", 30)
+    savings_pct = user.get("savings_pct", 20)
+    archive = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "month": month,
+        "closed_at": datetime.now(timezone.utc).isoformat(),
+        "currency": user.get("currency", "USD"),
+        "monthly_salary": salary,
+        "percentages": {"needs": needs_pct, "wants": wants_pct, "savings": savings_pct},
+        "budgets": {
+            "needs": salary * needs_pct / 100,
+            "wants": salary * wants_pct / 100,
+            "savings": salary * savings_pct / 100,
+        },
+        "income": income,
+        "expenses": expenses,
+        "net": (salary + income) - expenses,
+        "by_bucket": by_bucket,
+        "by_category": by_category,
+        "transactions": txs,
+        "tx_count": len(txs),
+    }
+    await db.month_archives.insert_one(archive)
+    await db.transactions.delete_many(
+        {"user_id": user["id"], "date": {"$regex": f"^{month}"}}
+    )
+    archive.pop("_id", None)
+    return archive
+
+@api.get("/months/archives")
+async def list_archives(user: dict = Depends(get_current_user)):
+    docs = await db.month_archives.find(
+        {"user_id": user["id"]}, {"_id": 0, "transactions": 0}
+    ).sort("month", -1).to_list(120)
+    return docs
+
+@api.get("/months/archives/{month}")
+async def get_archive(month: str, user: dict = Depends(get_current_user)):
+    doc = await db.month_archives.find_one({"user_id": user["id"], "month": month}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Archive not found")
+    return doc
+
+@api.delete("/months/archives/{month}")
+async def reopen_archive(month: str, user: dict = Depends(get_current_user)):
+    """Restore an archived month's transactions and remove the archive."""
+    doc = await db.month_archives.find_one({"user_id": user["id"], "month": month}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Archive not found")
+    if doc.get("transactions"):
+        await db.transactions.insert_many([{**t} for t in doc["transactions"]])
+    await db.month_archives.delete_one({"user_id": user["id"], "month": month})
+    return {"ok": True, "restored": len(doc.get("transactions", []))}
+
+
 # -- AI Advisor (Claude streaming) --
 def _build_context_str(user: dict, snapshot: dict) -> str:
     cur = user.get("currency", "USD")
@@ -404,6 +492,7 @@ async def startup():
     await db.users.create_index("email", unique=True)
     await db.transactions.create_index([("user_id", 1), ("date", -1)])
     await db.goals.create_index("user_id")
+    await db.month_archives.create_index([("user_id", 1), ("month", -1)], unique=True)
 
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@budget.app").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")

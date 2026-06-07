@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { LayoutDashboard, Receipt, PieChart, Target, Leaf, LogOut } from "lucide-react";
+import { LayoutDashboard, Receipt, PieChart, Target, Leaf, LogOut, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const links = [
@@ -8,6 +8,7 @@ const links = [
   { to: "/transactions", label: "Transactions", icon: Receipt, testid: "nav-transactions" },
   { to: "/budget", label: "Budget", icon: PieChart, testid: "nav-budget" },
   { to: "/goals", label: "Goals", icon: Target, testid: "nav-goals" },
+  { to: "/history", label: "History", icon: History, testid: "nav-history" },
   { to: "/advisor", label: "Sage AI", icon: Leaf, testid: "nav-advisor" },
 ];
 

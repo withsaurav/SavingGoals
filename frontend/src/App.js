@@ -11,6 +11,7 @@ import Transactions from "@/pages/Transactions";
 import Budget from "@/pages/Budget";
 import Goals from "@/pages/Goals";
 import Advisor from "@/pages/Advisor";
+import History from "@/pages/History";
 
 function AuthOnly({ children }) {
   const { user, loading } = useAuth();
@@ -31,6 +32,7 @@ function App() {
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/budget" element={<Budget />} />
             <Route path="/goals" element={<Goals />} />
+            <Route path="/history" element={<History />} />
             <Route path="/advisor" element={<Advisor />} />
           </Route>
         </Routes>

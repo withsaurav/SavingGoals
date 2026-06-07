@@ -1,17 +1,31 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { useNavigate } from "react-router-dom";
+import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { fmtMoney, currentMonth } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ArrowDownRight, ArrowUpRight, Wallet, TrendingUp, Leaf } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ArrowDownRight, ArrowUpRight, Wallet, TrendingUp, Leaf, Archive } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
+import { toast } from "sonner";
 
 const BUCKET_COLORS = { needs: "#2C4C3B", wants: "#C86A53", savings: "#D9984A" };
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
+  const [confirmClose, setConfirmClose] = useState(false);
+  const [closing, setClosing] = useState(false);
 
   const load = useCallback(async () => {
     const { data } = await api.get("/dashboard");
@@ -19,6 +33,21 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const closeMonth = async () => {
+    setClosing(true);
+    try {
+      const { data: archive } = await api.post("/months/close");
+      toast.success(`${archive.month} saved to History. Fresh start!`);
+      setConfirmClose(false);
+      await load();
+      navigate("/history");
+    } catch (err) {
+      toast.error(formatApiError(err.response?.data?.detail));
+    } finally {
+      setClosing(false);
+    }
+  };
 
   if (!data) return <div className="text-muted-foreground">Loading…</div>;
 
@@ -33,8 +62,50 @@ export default function Dashboard() {
           <div className="text-sm text-muted-foreground">Welcome back, {user?.name}</div>
           <h1 className="font-display text-4xl sm:text-5xl font-bold tracking-tight">Your money this month</h1>
         </div>
-        <div className="text-sm font-mono text-muted-foreground">{data.month}</div>
+        <div className="flex items-center gap-3">
+          <div className="text-sm font-mono text-muted-foreground">{data.month}</div>
+          <Button
+            onClick={() => setConfirmClose(true)}
+            disabled={data.expenses === 0 && data.income === 0}
+            variant="outline"
+            className="rounded-full border-moss text-moss hover:bg-moss hover:text-white"
+            data-testid="close-month-btn"
+          >
+            <Archive className="w-3.5 h-3.5 mr-2" />
+            End of month
+          </Button>
+        </div>
       </header>
+
+      <Dialog open={confirmClose} onOpenChange={setConfirmClose}>
+        <DialogContent className="rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display">Close {data.month}?</DialogTitle>
+            <DialogDescription>
+              We'll snapshot this month's salary, expenses, income, and {data.recent.length > 0 ? "transactions" : "data"} to
+              your <strong>History</strong>, then clear them so the new month starts at zero.
+              Your savings <strong>goals carry over</strong> untouched.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-xl bg-sage p-3 text-sm space-y-1">
+            <div className="flex justify-between"><span className="text-muted-foreground">Salary</span><span className="font-mono">{fmtMoney(data.monthly_salary, cur)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Income</span><span className="font-mono">{fmtMoney(data.income, cur)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Expenses</span><span className="font-mono text-terracotta">{fmtMoney(data.expenses, cur)}</span></div>
+            <div className="flex justify-between font-medium pt-1 border-t border-border"><span>Net</span><span className={data.net >= 0 ? "text-moss font-mono" : "text-terracotta font-mono"}>{fmtMoney(data.net, cur)}</span></div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmClose(false)} disabled={closing}>Cancel</Button>
+            <Button
+              onClick={closeMonth}
+              disabled={closing}
+              className="bg-moss hover:bg-moss-hover rounded-full"
+              data-testid="confirm-close-month-btn"
+            >
+              {closing ? "Closing…" : "Yes, close month"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard testid="stat-salary" icon={Wallet} label="Salary" value={fmtMoney(data.monthly_salary, cur)} tone="moss" />
