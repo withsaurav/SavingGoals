@@ -4,7 +4,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Leaf } from "lucide-react";
+import { BrandMarkOnDark } from "@/components/BrandMark";
+import { brand } from "@/brand.config";
 import { formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -35,21 +36,18 @@ export default function Login() {
     <div className="min-h-screen grid md:grid-cols-2">
       <div className="hidden md:flex flex-col justify-between bg-moss text-white p-12">
         <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center">
-            <Leaf className="w-5 h-5" />
-          </div>
-          <span className="font-display font-bold text-xl">Verdant</span>
+          <BrandMarkOnDark />
+          <span className="font-display font-bold text-xl">{brand.name}</span>
         </div>
         <div>
           <h1 className="font-display text-4xl lg:text-5xl font-bold mb-4 text-balance">
-            Plant your salary. Watch it grow.
+            {brand.heroHeadline}
           </h1>
           <p className="text-white/70 text-base max-w-md">
-            A calm, modern budgeting space that turns each paycheck into a plan —
-            with an AI advisor named Sage to keep you on track.
+            {brand.heroSubtitle}
           </p>
         </div>
-        <div className="text-xs text-white/50">© Verdant Budget</div>
+        <div className="text-xs text-white/50">{brand.copyright}</div>
       </div>
 
       <div className="flex items-center justify-center p-8">

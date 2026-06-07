@@ -2,6 +2,8 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { LayoutDashboard, Receipt, PieChart, Target, Leaf, LogOut, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BrandMark } from "@/components/BrandMark";
+import { brand } from "@/brand.config";
 
 const links = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, testid: "nav-dashboard" },
@@ -25,12 +27,10 @@ export default function Layout() {
     <div className="min-h-screen flex flex-col md:flex-row bg-background">
       <aside className="md:w-64 md:min-h-screen border-r border-border bg-white px-6 py-8 flex flex-col">
         <div className="flex items-center gap-2 mb-10">
-          <div className="w-9 h-9 rounded-full bg-moss flex items-center justify-center">
-            <Leaf className="w-5 h-5 text-white" />
-          </div>
+          <BrandMark size="md" />
           <div>
-            <div className="font-display font-bold text-lg leading-none">Verdant</div>
-            <div className="text-xs text-muted-foreground">Salary budget</div>
+            <div className="font-display font-bold text-lg leading-none">{brand.name}</div>
+            <div className="text-xs text-muted-foreground">{brand.tagline}</div>
           </div>
         </div>
 
