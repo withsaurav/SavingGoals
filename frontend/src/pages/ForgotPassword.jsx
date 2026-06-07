@@ -94,9 +94,13 @@ export default function ForgotPassword() {
                   <MailCheck className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <div className="font-display text-lg font-bold">Check your email</div>
+                  <div className="font-display text-lg font-bold">
+                    {result.email_sent ? "Check your inbox" : "Check your email"}
+                  </div>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {result.message}
+                    {result.email_sent
+                      ? `We've sent a reset link to ${email}. It expires in 1 hour.`
+                      : result.message}
                   </p>
                 </div>
               </div>

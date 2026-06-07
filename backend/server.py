@@ -7,8 +7,10 @@ import os
 import logging
 import uuid
 import secrets
+import asyncio
 import bcrypt
 import jwt as pyjwt
+import resend
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
 
@@ -24,6 +26,10 @@ from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, Strea
 JWT_ALGORITHM = "HS256"
 JWT_SECRET = os.environ["JWT_SECRET"]
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
+if RESEND_API_KEY:
+    resend.api_key = RESEND_API_KEY
 
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -185,6 +191,63 @@ class ResetPasswordIn(BaseModel):
 class VerifyResetTokenIn(BaseModel):
     token: str
 
+def _reset_email_html(name: str, reset_url: str, brand_name: str = "Verdant") -> str:
+    return f"""<!doctype html>
+<html><body style="margin:0;padding:0;background:#F4F7F4;font-family:Arial,Helvetica,sans-serif;color:#1a1e1c;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F7F4;padding:40px 0;">
+    <tr><td align="center">
+      <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #E5E8E5;overflow:hidden;">
+        <tr><td style="background:#2C4C3B;padding:28px 32px;color:#ffffff;">
+          <div style="font-size:22px;font-weight:700;letter-spacing:-0.02em;">{brand_name}</div>
+          <div style="font-size:13px;opacity:0.75;margin-top:2px;">Password reset</div>
+        </td></tr>
+        <tr><td style="padding:32px;">
+          <p style="font-size:16px;margin:0 0 16px;">Hi {name or "there"},</p>
+          <p style="font-size:15px;line-height:1.55;margin:0 0 24px;color:#374a3f;">
+            We received a request to reset your password. Click the button below to choose a new one. This link expires in <strong>1 hour</strong>.
+          </p>
+          <p style="text-align:center;margin:32px 0;">
+            <a href="{reset_url}" style="display:inline-block;background:#2C4C3B;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:999px;font-weight:600;font-size:15px;">Reset password</a>
+          </p>
+          <p style="font-size:13px;color:#6D7570;line-height:1.55;margin:24px 0 0;">
+            Or paste this link into your browser:<br/>
+            <span style="font-family:monospace;font-size:12px;word-break:break-all;color:#2C4C3B;">{reset_url}</span>
+          </p>
+          <p style="font-size:13px;color:#6D7570;line-height:1.55;margin:24px 0 0;border-top:1px solid #E5E8E5;padding-top:20px;">
+            If you didn't request this, you can safely ignore this email — your password won't change.
+          </p>
+        </td></tr>
+      </table>
+      <div style="font-size:11px;color:#9aa19c;margin-top:16px;">© {brand_name}</div>
+    </td></tr>
+  </table>
+</body></html>"""
+
+
+async def send_reset_email(to_email: str, name: str, reset_url: str) -> Optional[str]:
+    """Send a password-reset email via Resend. Returns the email id, or None on failure / if disabled."""
+    if not RESEND_API_KEY:
+        return None
+    params = {
+        "from": SENDER_EMAIL,
+        "to": [to_email],
+        "subject": "Reset your Verdant password",
+        "html": _reset_email_html(name, reset_url),
+        "text": (
+            f"Hi {name or 'there'},\n\n"
+            f"We received a request to reset your password.\n"
+            f"Open this link to set a new password (expires in 1 hour):\n\n{reset_url}\n\n"
+            f"If you didn't request this, ignore this email."
+        ),
+    }
+    try:
+        email = await asyncio.to_thread(resend.Emails.send, params)
+        return email.get("id") if isinstance(email, dict) else getattr(email, "id", None)
+    except Exception:
+        logger.exception("Resend email send failed for %s", to_email)
+        return None
+
+
 @api.post("/auth/forgot-password")
 async def forgot_password(data: ForgotPasswordIn):
     email = data.email.lower()
@@ -206,11 +269,17 @@ async def forgot_password(data: ForgotPasswordIn):
         frontend = os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
         reset_url = f"{frontend}/reset-password?token={token}"
         logger.warning("PASSWORD RESET LINK for %s: %s", email, reset_url)
-        # DEV-ONLY: return the link so the user can complete reset without an email provider.
-        # Replace with real email send (Resend / SendGrid) and remove this field for production.
-        payload["dev_reset_url"] = reset_url
+
+        email_id = await send_reset_email(email, user.get("name", ""), reset_url)
+        if email_id:
+            payload["email_sent"] = True
+        else:
+            # DEV-ONLY fallback (no Resend key or send failed): expose the link in the response
+            # so the user can still complete the reset. Remove for stricter production posture.
+            payload["dev_reset_url"] = reset_url
 
     return payload
+
 
 @api.post("/auth/verify-reset-token")
 async def verify_reset_token(data: VerifyResetTokenIn):
