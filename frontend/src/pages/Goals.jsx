@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Plus, Target, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -71,7 +71,10 @@ export default function Goals() {
             </Button>
           </DialogTrigger>
           <DialogContent className="rounded-2xl">
-            <DialogHeader><DialogTitle className="font-display">New goal</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle className="font-display">New goal</DialogTitle>
+              <DialogDescription>Track progress toward a savings target.</DialogDescription>
+            </DialogHeader>
             <form onSubmit={submit} className="space-y-4">
               <div className="space-y-2">
                 <Label>Name</Label>

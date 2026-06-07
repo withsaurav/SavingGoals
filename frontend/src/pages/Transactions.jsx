@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
@@ -90,7 +90,10 @@ export default function Transactions() {
             </Button>
           </DialogTrigger>
           <DialogContent className="rounded-2xl">
-            <DialogHeader><DialogTitle className="font-display">New transaction</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle className="font-display">New transaction</DialogTitle>
+              <DialogDescription>Log an expense or income with date and category.</DialogDescription>
+            </DialogHeader>
             <form onSubmit={submit} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
