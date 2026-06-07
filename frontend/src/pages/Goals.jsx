@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
-import { Plus, Target, Trash2, CalendarClock } from "lucide-react";
+import { Plus, Target, Trash2, CalendarClock, Sparkles } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 
 export default function Goals() {
@@ -112,85 +113,127 @@ export default function Goals() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6" data-testid="goals-grid">
-          {goals.map((g) => {
-            const pct = Math.min(100, (g.saved_amount / g.target_amount) * 100);
-            const monthlySavings = settings ? (settings.monthly_salary * settings.savings_pct) / 100 : 0;
-            const remaining = Math.max(0, g.target_amount - g.saved_amount);
-            const done = remaining <= 0;
-            const months = !done && monthlySavings > 0 ? Math.ceil(remaining / monthlySavings) : null;
-            const eta = months != null ? etaLabel(months) : null;
-            const deadlineMonths = g.deadline ? monthsUntil(g.deadline) : null;
-            const onTrack = months != null && deadlineMonths != null ? months <= deadlineMonths : null;
-
-            return (
-              <Card key={g.id} className="rounded-2xl border-border transition-all duration-300 hover:-translate-y-1 hover:shadow-lg" data-testid={`goal-card-${g.id}`}>
-                <CardHeader className="flex flex-row justify-between items-start">
-                  <div>
-                    <CardTitle className="font-display">{g.name}</CardTitle>
-                    {g.deadline && <div className="text-xs text-muted-foreground mt-1">By {g.deadline}</div>}
-                  </div>
-                  <Button size="icon" variant="ghost" onClick={() => del(g.id)} data-testid={`del-goal-${g.id}`}>
-                    <Trash2 className="w-4 h-4 text-muted-foreground" />
-                  </Button>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-sm mb-2">
-                      <span className="font-mono text-moss">{fmtMoney(g.saved_amount, user?.currency)}</span>
-                      <span className="text-muted-foreground font-mono">{fmtMoney(g.target_amount, user?.currency)}</span>
-                    </div>
-                    <Progress value={pct} className="h-2.5 rounded-full" />
-                    <div className="text-xs text-muted-foreground mt-2">{pct.toFixed(0)}% complete</div>
-                  </div>
-
-                  <div
-                    className="rounded-xl bg-sage border border-border p-3 flex items-center gap-3"
-                    data-testid={`goal-eta-${g.id}`}
-                  >
-                    <div className="w-8 h-8 rounded-full bg-moss/10 flex items-center justify-center shrink-0">
-                      <CalendarClock className="w-4 h-4 text-moss" />
-                    </div>
-                    <div className="text-xs leading-tight">
-                      {done ? (
-                        <div className="font-medium text-moss">Goal reached. 🌱</div>
-                      ) : monthlySavings <= 0 ? (
-                        <>
-                          <div className="font-medium">Set a salary & savings %</div>
-                          <div className="text-muted-foreground">to see months-to-goal.</div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="font-medium" data-testid={`goal-months-${g.id}`}>
-                            {eta} at {fmtMoney(monthlySavings, user?.currency)}/mo
-                          </div>
-                          <div className="text-muted-foreground">
-                            {fmtMoney(remaining, user?.currency)} to go
-                            {deadlineMonths != null && (
-                              <span className={onTrack ? "text-moss ml-1" : "text-terracotta ml-1"}>
-                                {" · "}
-                                {onTrack
-                                  ? `on track (${deadlineMonths} mo left)`
-                                  : `${months - deadlineMonths} mo behind deadline`}
-                              </span>
-                            )}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button variant="outline" className="rounded-full" onClick={() => contribute(g, 50)} data-testid={`add50-${g.id}`}>+50</Button>
-                    <Button variant="outline" className="rounded-full" onClick={() => contribute(g, 100)} data-testid={`add100-${g.id}`}>+100</Button>
-                    <Button variant="outline" className="rounded-full" onClick={() => contribute(g, -50)} data-testid={`sub50-${g.id}`}>−50</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+          {goals.map((g) => (
+            <GoalCard
+              key={g.id}
+              g={g}
+              settings={settings}
+              currency={user?.currency}
+              onContribute={contribute}
+              onDelete={del}
+            />
+          ))}
         </div>
       )}
     </div>
+  );
+}
+
+function GoalCard({ g, settings, currency, onContribute, onDelete }) {
+  const [extra, setExtra] = useState(0);
+
+  const pct = Math.min(100, (g.saved_amount / g.target_amount) * 100);
+  const baseMonthly = settings ? (settings.monthly_salary * settings.savings_pct) / 100 : 0;
+  const remaining = Math.max(0, g.target_amount - g.saved_amount);
+  const done = remaining <= 0;
+  const baseMonths = !done && baseMonthly > 0 ? Math.ceil(remaining / baseMonthly) : null;
+  const projectedMonthly = baseMonthly + extra;
+  const projectedMonths = !done && projectedMonthly > 0 ? Math.ceil(remaining / projectedMonthly) : null;
+  const saved = baseMonths != null && projectedMonths != null ? baseMonths - projectedMonths : 0;
+  const deadlineMonths = g.deadline ? monthsUntil(g.deadline) : null;
+  const onTrack = baseMonths != null && deadlineMonths != null ? baseMonths <= deadlineMonths : null;
+
+  return (
+    <Card className="rounded-2xl border-border transition-all duration-300 hover:-translate-y-1 hover:shadow-lg" data-testid={`goal-card-${g.id}`}>
+      <CardHeader className="flex flex-row justify-between items-start">
+        <div>
+          <CardTitle className="font-display">{g.name}</CardTitle>
+          {g.deadline && <div className="text-xs text-muted-foreground mt-1">By {g.deadline}</div>}
+        </div>
+        <Button size="icon" variant="ghost" onClick={() => onDelete(g.id)} data-testid={`del-goal-${g.id}`}>
+          <Trash2 className="w-4 h-4 text-muted-foreground" />
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <div className="flex justify-between text-sm mb-2">
+            <span className="font-mono text-moss">{fmtMoney(g.saved_amount, currency)}</span>
+            <span className="text-muted-foreground font-mono">{fmtMoney(g.target_amount, currency)}</span>
+          </div>
+          <Progress value={pct} className="h-2.5 rounded-full" />
+          <div className="text-xs text-muted-foreground mt-2">{pct.toFixed(0)}% complete</div>
+        </div>
+
+        <div
+          className="rounded-xl bg-sage border border-border p-3 flex items-center gap-3"
+          data-testid={`goal-eta-${g.id}`}
+        >
+          <div className="w-8 h-8 rounded-full bg-moss/10 flex items-center justify-center shrink-0">
+            <CalendarClock className="w-4 h-4 text-moss" />
+          </div>
+          <div className="text-xs leading-tight">
+            {done ? (
+              <div className="font-medium text-moss">Goal reached. 🌱</div>
+            ) : baseMonthly <= 0 ? (
+              <>
+                <div className="font-medium">Set a salary & savings %</div>
+                <div className="text-muted-foreground">to see months-to-goal.</div>
+              </>
+            ) : (
+              <>
+                <div className="font-medium" data-testid={`goal-months-${g.id}`}>
+                  {etaLabel(baseMonths)} at {fmtMoney(baseMonthly, currency)}/mo
+                </div>
+                <div className="text-muted-foreground">
+                  {fmtMoney(remaining, currency)} to go
+                  {deadlineMonths != null && (
+                    <span className={onTrack ? "text-moss ml-1" : "text-terracotta ml-1"}>
+                      {" · "}
+                      {onTrack
+                        ? `on track (${deadlineMonths} mo left)`
+                        : `${baseMonths - deadlineMonths} mo behind deadline`}
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {!done && baseMonthly > 0 && (
+          <div className="rounded-xl border border-dashed border-moss/30 p-4 space-y-3" data-testid={`whatif-${g.id}`}>
+            <div className="flex items-center gap-2 text-xs font-medium text-moss">
+              <Sparkles className="w-3.5 h-3.5" />
+              What if I save more?
+            </div>
+            <Slider
+              value={[extra]}
+              onValueChange={(v) => setExtra(v[0])}
+              min={0}
+              max={1000}
+              step={25}
+              data-testid={`whatif-slider-${g.id}`}
+            />
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-muted-foreground">
+                +{fmtMoney(extra, currency)}<span className="opacity-60">/mo</span>
+              </span>
+              <span className="font-mono text-moss" data-testid={`whatif-projected-${g.id}`}>
+                {projectedMonths === baseMonths
+                  ? etaLabel(baseMonths)
+                  : `${etaLabel(projectedMonths)} · save ${saved} mo`}
+              </span>
+            </div>
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <Button variant="outline" className="rounded-full" onClick={() => onContribute(g, 50)} data-testid={`add50-${g.id}`}>+50</Button>
+          <Button variant="outline" className="rounded-full" onClick={() => onContribute(g, 100)} data-testid={`add100-${g.id}`}>+100</Button>
+          <Button variant="outline" className="rounded-full" onClick={() => onContribute(g, -50)} data-testid={`sub50-${g.id}`}>−50</Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
