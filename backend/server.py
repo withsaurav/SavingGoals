@@ -6,6 +6,7 @@ load_dotenv(ROOT_DIR / '.env')
 import os
 import logging
 import uuid
+import secrets
 import bcrypt
 import jwt as pyjwt
 from datetime import datetime, timezone, timedelta
@@ -170,6 +171,73 @@ async def logout(response: Response):
 @api.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
     return user
+
+# -- Password reset --
+RESET_TOKEN_TTL_MINUTES = 60
+
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+
+class ResetPasswordIn(BaseModel):
+    token: str
+    new_password: str
+
+class VerifyResetTokenIn(BaseModel):
+    token: str
+
+@api.post("/auth/forgot-password")
+async def forgot_password(data: ForgotPasswordIn):
+    email = data.email.lower()
+    user = await db.users.find_one({"email": email})
+    # Return generic success either way to prevent email enumeration.
+    payload = {"ok": True, "message": "If that email is registered, a reset link has been sent."}
+
+    if user:
+        token = secrets.token_urlsafe(32)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_TTL_MINUTES)
+        await db.password_reset_tokens.insert_one({
+            "token": token,
+            "user_id": user["id"],
+            "email": email,
+            "expires_at": expires_at,
+            "used": False,
+            "created_at": datetime.now(timezone.utc),
+        })
+        frontend = os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+        reset_url = f"{frontend}/reset-password?token={token}"
+        logger.warning("PASSWORD RESET LINK for %s: %s", email, reset_url)
+        # DEV-ONLY: return the link so the user can complete reset without an email provider.
+        # Replace with real email send (Resend / SendGrid) and remove this field for production.
+        payload["dev_reset_url"] = reset_url
+
+    return payload
+
+@api.post("/auth/verify-reset-token")
+async def verify_reset_token(data: VerifyResetTokenIn):
+    doc = await db.password_reset_tokens.find_one({"token": data.token})
+    if not doc or doc.get("used"):
+        return {"valid": False, "reason": "Invalid or already used token"}
+    if doc["expires_at"].replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+        return {"valid": False, "reason": "Token expired"}
+    return {"valid": True, "email": doc["email"]}
+
+@api.post("/auth/reset-password")
+async def reset_password(data: ResetPasswordIn):
+    if len(data.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    doc = await db.password_reset_tokens.find_one({"token": data.token})
+    if not doc or doc.get("used"):
+        raise HTTPException(status_code=400, detail="Invalid or already used token")
+    if doc["expires_at"].replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Token expired. Please request a new reset link.")
+    await db.users.update_one(
+        {"id": doc["user_id"]},
+        {"$set": {"password_hash": hash_password(data.new_password)}},
+    )
+    await db.password_reset_tokens.update_one(
+        {"token": data.token}, {"$set": {"used": True, "used_at": datetime.now(timezone.utc)}}
+    )
+    return {"ok": True, "message": "Password updated. You can now sign in."}
 
 # -- Budget Settings --
 @api.get("/budget/settings")
@@ -524,6 +592,8 @@ async def startup():
     await db.transactions.create_index([("user_id", 1), ("date", -1)])
     await db.goals.create_index("user_id")
     await db.month_archives.create_index([("user_id", 1), ("month", -1)], unique=True)
+    await db.password_reset_tokens.create_index("token", unique=True)
+    await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
 
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@budget.app").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
