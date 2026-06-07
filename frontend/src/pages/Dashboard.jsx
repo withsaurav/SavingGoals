@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ArrowDownRight, ArrowUpRight, Wallet, TrendingUp, Leaf, Archive } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Wallet, TrendingUp, Leaf, Archive, ChevronLeft, ChevronRight } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import { toast } from "sonner";
 
@@ -38,7 +38,7 @@ export default function Dashboard() {
     setClosing(true);
     try {
       const { data: archive } = await api.post("/months/close");
-      toast.success(`${archive.month} saved to History. Fresh start!`);
+      toast.success(`${archive.month} saved to History. Welcome to ${archive.new_active_month}!`);
       setConfirmClose(false);
       await load();
       navigate("/history");
@@ -46,6 +46,19 @@ export default function Dashboard() {
       toast.error(formatApiError(err.response?.data?.detail));
     } finally {
       setClosing(false);
+    }
+  };
+
+  const shiftMonth = async (delta) => {
+    if (!data) return;
+    const [y, m] = data.month.split("-").map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    const next = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    try {
+      await api.put("/months/active", { month: next });
+      await load();
+    } catch (err) {
+      toast.error(formatApiError(err.response?.data?.detail));
     }
   };
 
@@ -63,7 +76,29 @@ export default function Dashboard() {
           <h1 className="font-display text-4xl sm:text-5xl font-bold tracking-tight">Your money this month</h1>
         </div>
         <div className="flex items-center gap-3">
-          <div className="text-sm font-mono text-muted-foreground">{data.month}</div>
+          <div className="flex items-center gap-1 bg-white border border-border rounded-full px-1.5 py-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 rounded-full"
+              onClick={() => shiftMonth(-1)}
+              data-testid="month-prev-btn"
+              aria-label="Previous month"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <span className="text-sm font-mono px-2" data-testid="active-month-label">{data.month}</span>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 rounded-full"
+              onClick={() => shiftMonth(1)}
+              data-testid="month-next-btn"
+              aria-label="Next month"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
           <Button
             onClick={() => setConfirmClose(true)}
             disabled={data.expenses === 0 && data.income === 0}

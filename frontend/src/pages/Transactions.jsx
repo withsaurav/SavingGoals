@@ -11,11 +11,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
-const EXPENSE_CATEGORIES = ["Rent", "Groceries", "Utilities", "Transport", "Dining", "Entertainment", "Health", "Shopping", "Subscriptions", "Other"];
+const EXPENSE_CATEGORIES = ["Rent", "Home Loan", "Loan", "Credit Card Bills", "Groceries", "Utilities", "Transport", "Dining", "Entertainment", "Health", "Shopping", "Subscriptions", "Other"];
 const INCOME_CATEGORIES = ["Bonus", "Freelance", "Investment", "Refund", "Gift", "Other"];
 
 const BUCKETS_FOR_CATEGORY = {
-  Rent: "needs", Groceries: "needs", Utilities: "needs", Transport: "needs", Health: "needs",
+  Rent: "needs", "Home Loan": "needs", Loan: "needs", "Credit Card Bills": "needs",
+  Groceries: "needs", Utilities: "needs", Transport: "needs", Health: "needs",
   Dining: "wants", Entertainment: "wants", Shopping: "wants", Subscriptions: "wants",
   Other: "needs",
 };

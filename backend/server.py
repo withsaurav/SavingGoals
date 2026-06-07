@@ -281,11 +281,22 @@ async def delete_goal(gid: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Goal not found")
     return {"ok": True}
 
+def _next_month(ym: str) -> str:
+    """YYYY-MM → next month YYYY-MM."""
+    y, m = int(ym[:4]), int(ym[5:7])
+    m += 1
+    if m == 13:
+        m = 1
+        y += 1
+    return f"{y:04d}-{m:02d}"
+
+def _active_month(user: dict) -> str:
+    return user.get("active_month") or datetime.now(timezone.utc).strftime("%Y-%m")
+
 # -- Dashboard summary --
 @api.get("/dashboard")
 async def dashboard(user: dict = Depends(get_current_user)):
-    now = datetime.now(timezone.utc)
-    month = now.strftime("%Y-%m")
+    month = _active_month(user)
     txs = await db.transactions.find(
         {"user_id": user["id"], "date": {"$regex": f"^{month}"}},
         {"_id": 0},
@@ -328,10 +339,11 @@ async def dashboard(user: dict = Depends(get_current_user)):
 # -- Month archives (close-out) --
 @api.post("/months/close")
 async def close_month(user: dict = Depends(get_current_user), month: Optional[str] = None):
-    """Snapshot the given month (default: current) and clear those transactions.
-    Goals are NOT touched — they carry forward as-is."""
+    """Snapshot the given month (default: active month) and clear those transactions.
+    Goals are NOT touched — they carry forward as-is. The user's active month is
+    advanced to the next calendar month so the Dashboard starts fresh."""
     if not month:
-        month = datetime.now(timezone.utc).strftime("%Y-%m")
+        month = _active_month(user)
 
     existing = await db.month_archives.find_one({"user_id": user["id"], "month": month})
     if existing:
@@ -384,7 +396,13 @@ async def close_month(user: dict = Depends(get_current_user), month: Optional[st
     await db.transactions.delete_many(
         {"user_id": user["id"], "date": {"$regex": f"^{month}"}}
     )
+    # Advance the active month so the Dashboard reflects the new period
+    new_active = _next_month(month)
+    await db.users.update_one(
+        {"id": user["id"]}, {"$set": {"active_month": new_active}}
+    )
     archive.pop("_id", None)
+    archive["new_active_month"] = new_active
     return archive
 
 @api.get("/months/archives")
@@ -403,14 +421,27 @@ async def get_archive(month: str, user: dict = Depends(get_current_user)):
 
 @api.delete("/months/archives/{month}")
 async def reopen_archive(month: str, user: dict = Depends(get_current_user)):
-    """Restore an archived month's transactions and remove the archive."""
+    """Restore an archived month's transactions and remove the archive.
+    The user's active month is set back to this reopened month."""
     doc = await db.month_archives.find_one({"user_id": user["id"], "month": month}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Archive not found")
     if doc.get("transactions"):
         await db.transactions.insert_many([{**t} for t in doc["transactions"]])
     await db.month_archives.delete_one({"user_id": user["id"], "month": month})
-    return {"ok": True, "restored": len(doc.get("transactions", []))}
+    await db.users.update_one({"id": user["id"]}, {"$set": {"active_month": month}})
+    return {"ok": True, "restored": len(doc.get("transactions", [])), "active_month": month}
+
+class ActiveMonthIn(BaseModel):
+    month: str  # YYYY-MM
+
+@api.put("/months/active")
+async def set_active_month(data: ActiveMonthIn, user: dict = Depends(get_current_user)):
+    """Manually set the active dashboard month (e.g. to navigate forward or back)."""
+    if not (len(data.month) == 7 and data.month[4] == "-"):
+        raise HTTPException(status_code=400, detail="Month must be YYYY-MM")
+    await db.users.update_one({"id": user["id"]}, {"$set": {"active_month": data.month}})
+    return {"ok": True, "active_month": data.month}
 
 
 # -- AI Advisor (Claude streaming) --
