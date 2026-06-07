@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { fmtMoney, todayISO } from "@/lib/format";
@@ -33,12 +33,12 @@ export default function Transactions() {
     date: todayISO(),
   });
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const { data } = await api.get("/transactions");
     setTxs(data);
-  };
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const onChange = (k, v) => {
     setForm((f) => {

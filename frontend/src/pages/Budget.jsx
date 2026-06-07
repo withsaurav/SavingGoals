@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,12 +15,12 @@ export default function Budget() {
   const [s, setS] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const { data } = await api.get("/budget/settings");
-      setS(data);
-    })();
+  const loadSettings = useCallback(async () => {
+    const { data } = await api.get("/budget/settings");
+    setS(data);
   }, []);
+
+  useEffect(() => { loadSettings(); }, [loadSettings]);
 
   if (!s) return <div className="text-muted-foreground">Loading…</div>;
 

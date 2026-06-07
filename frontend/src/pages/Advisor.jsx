@@ -15,23 +15,27 @@ const STARTERS = [
 
 export default function Advisor() {
   const [messages, setMessages] = useState([
-    { role: "sage", text: "Hi, I'm Sage. Ask me anything about your budget — I'm looking at your live numbers." },
+    { id: "init", role: "sage", text: "Hi, I'm Sage. Ask me anything about your budget — I'm looking at your live numbers." },
   ]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const scrollRef = useRef(null);
 
-  useEffect(() => { scrollRef.current?.scrollTo({ top: 99999, behavior: "smooth" }); }, [messages]);
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 99999, behavior: "smooth" });
+  }, [messages]);
 
   const send = async (text) => {
     const msg = (text ?? input).trim();
     if (!msg || sending) return;
-    setMessages((m) => [...m, { role: "user", text: msg }]);
+    const userId = `u-${Date.now()}`;
+    setMessages((m) => [...m, { id: userId, role: "user", text: msg }]);
     setInput("");
     setSending(true);
     try {
       const { data } = await api.post("/advisor/ask", { message: msg });
-      setMessages((m) => [...m, { role: "sage", text: data.reply }]);
+      const sageId = `s-${Date.now()}`;
+      setMessages((m) => [...m, { id: sageId, role: "sage", text: data.reply }]);
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || "Sage is unreachable");
     } finally {
@@ -54,8 +58,8 @@ export default function Advisor() {
       <Card className="rounded-2xl border-border">
         <CardContent className="p-0">
           <div ref={scrollRef} className="h-[450px] overflow-y-auto p-6 space-y-4" data-testid="advisor-messages">
-            {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+            {messages.map((m) => (
+              <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
                   m.role === "user" ? "bg-moss text-white rounded-br-sm" : "bg-sage text-foreground rounded-bl-sm"
                 }`}>
@@ -75,7 +79,7 @@ export default function Advisor() {
           <div className="border-t border-border p-4">
             <div className="flex gap-2 flex-wrap mb-3">
               {STARTERS.map((s, i) => (
-                <Button key={i} variant="outline" size="sm" className="rounded-full text-xs" onClick={() => send(s)} disabled={sending} data-testid={`starter-${i}`}>
+                <Button key={s} variant="outline" size="sm" className="rounded-full text-xs" onClick={() => send(s)} disabled={sending} data-testid={`starter-${i}`}>
                   {s}
                 </Button>
               ))}

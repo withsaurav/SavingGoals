@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { fmtMoney } from "@/lib/format";
@@ -19,12 +19,12 @@ export default function Goals() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", target_amount: "", saved_amount: 0, deadline: "" });
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const [g, s] = await Promise.all([api.get("/goals"), api.get("/budget/settings")]);
     setGoals(g.data);
     setSettings(s.data);
-  };
-  useEffect(() => { load(); }, []);
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -164,41 +164,16 @@ function GoalCard({ g, settings, currency, onContribute, onDelete }) {
           <div className="text-xs text-muted-foreground mt-2">{pct.toFixed(0)}% complete</div>
         </div>
 
-        <div
-          className="rounded-xl bg-sage border border-border p-3 flex items-center gap-3"
-          data-testid={`goal-eta-${g.id}`}
-        >
-          <div className="w-8 h-8 rounded-full bg-moss/10 flex items-center justify-center shrink-0">
-            <CalendarClock className="w-4 h-4 text-moss" />
-          </div>
-          <div className="text-xs leading-tight">
-            {done ? (
-              <div className="font-medium text-moss">Goal reached. 🌱</div>
-            ) : baseMonthly <= 0 ? (
-              <>
-                <div className="font-medium">Set a salary & savings %</div>
-                <div className="text-muted-foreground">to see months-to-goal.</div>
-              </>
-            ) : (
-              <>
-                <div className="font-medium" data-testid={`goal-months-${g.id}`}>
-                  {etaLabel(baseMonths)} at {fmtMoney(baseMonthly, currency)}/mo
-                </div>
-                <div className="text-muted-foreground">
-                  {fmtMoney(remaining, currency)} to go
-                  {deadlineMonths != null && (
-                    <span className={onTrack ? "text-moss ml-1" : "text-terracotta ml-1"}>
-                      {" · "}
-                      {onTrack
-                        ? `on track (${deadlineMonths} mo left)`
-                        : `${baseMonths - deadlineMonths} mo behind deadline`}
-                    </span>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+        <EtaChip
+          goalId={g.id}
+          done={done}
+          baseMonthly={baseMonthly}
+          baseMonths={baseMonths}
+          remaining={remaining}
+          deadlineMonths={deadlineMonths}
+          onTrack={onTrack}
+          currency={currency}
+        />
 
         {!done && baseMonthly > 0 && (
           <div className="rounded-xl border border-dashed border-moss/30 p-4 space-y-3" data-testid={`whatif-${g.id}`}>
@@ -234,6 +209,51 @@ function GoalCard({ g, settings, currency, onContribute, onDelete }) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function EtaChip({ goalId, done, baseMonthly, baseMonths, remaining, deadlineMonths, onTrack, currency }) {
+  let body;
+  if (done) {
+    body = <div className="font-medium text-moss">Goal reached. 🌱</div>;
+  } else if (baseMonthly <= 0) {
+    body = (
+      <>
+        <div className="font-medium">Set a salary & savings %</div>
+        <div className="text-muted-foreground">to see months-to-goal.</div>
+      </>
+    );
+  } else {
+    const deadlineNote =
+      deadlineMonths == null
+        ? null
+        : onTrack
+          ? `on track (${deadlineMonths} mo left)`
+          : `${baseMonths - deadlineMonths} mo behind deadline`;
+    body = (
+      <>
+        <div className="font-medium" data-testid={`goal-months-${goalId}`}>
+          {etaLabel(baseMonths)} at {fmtMoney(baseMonthly, currency)}/mo
+        </div>
+        <div className="text-muted-foreground">
+          {fmtMoney(remaining, currency)} to go
+          {deadlineNote && (
+            <span className={onTrack ? "text-moss ml-1" : "text-terracotta ml-1"}>
+              {" · "}{deadlineNote}
+            </span>
+          )}
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <div className="rounded-xl bg-sage border border-border p-3 flex items-center gap-3" data-testid={`goal-eta-${goalId}`}>
+      <div className="w-8 h-8 rounded-full bg-moss/10 flex items-center justify-center shrink-0">
+        <CalendarClock className="w-4 h-4 text-moss" />
+      </div>
+      <div className="text-xs leading-tight">{body}</div>
+    </div>
   );
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { fmtMoney, currentMonth } from "@/lib/format";
@@ -13,12 +13,12 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [data, setData] = useState(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const { data } = await api.get("/dashboard");
     setData(data);
-  };
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   if (!data) return <div className="text-muted-foreground">Loading…</div>;
 
@@ -82,7 +82,7 @@ export default function Dashboard() {
               <ResponsiveContainer width="100%" height={220}>
                 <PieChart>
                   <Pie data={bucketData} dataKey="value" innerRadius={50} outerRadius={85} paddingAngle={4}>
-                    {bucketData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                    {bucketData.map((e) => <Cell key={e.name} fill={e.color} />)}
                   </Pie>
                   <Tooltip formatter={(v) => fmtMoney(v, cur)} />
                 </PieChart>
