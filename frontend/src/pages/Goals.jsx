@@ -8,18 +8,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
-import { Plus, Target, Trash2 } from "lucide-react";
+import { Plus, Target, Trash2, CalendarClock } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Goals() {
   const { user } = useAuth();
   const [goals, setGoals] = useState([]);
+  const [settings, setSettings] = useState(null);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", target_amount: "", saved_amount: 0, deadline: "" });
 
   const load = async () => {
-    const { data } = await api.get("/goals");
-    setGoals(data);
+    const [g, s] = await Promise.all([api.get("/goals"), api.get("/budget/settings")]);
+    setGoals(g.data);
+    setSettings(s.data);
   };
   useEffect(() => { load(); }, []);
 
@@ -112,6 +114,14 @@ export default function Goals() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6" data-testid="goals-grid">
           {goals.map((g) => {
             const pct = Math.min(100, (g.saved_amount / g.target_amount) * 100);
+            const monthlySavings = settings ? (settings.monthly_salary * settings.savings_pct) / 100 : 0;
+            const remaining = Math.max(0, g.target_amount - g.saved_amount);
+            const done = remaining <= 0;
+            const months = !done && monthlySavings > 0 ? Math.ceil(remaining / monthlySavings) : null;
+            const eta = months != null ? etaLabel(months) : null;
+            const deadlineMonths = g.deadline ? monthsUntil(g.deadline) : null;
+            const onTrack = months != null && deadlineMonths != null ? months <= deadlineMonths : null;
+
             return (
               <Card key={g.id} className="rounded-2xl border-border transition-all duration-300 hover:-translate-y-1 hover:shadow-lg" data-testid={`goal-card-${g.id}`}>
                 <CardHeader className="flex flex-row justify-between items-start">
@@ -132,6 +142,43 @@ export default function Goals() {
                     <Progress value={pct} className="h-2.5 rounded-full" />
                     <div className="text-xs text-muted-foreground mt-2">{pct.toFixed(0)}% complete</div>
                   </div>
+
+                  <div
+                    className="rounded-xl bg-sage border border-border p-3 flex items-center gap-3"
+                    data-testid={`goal-eta-${g.id}`}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-moss/10 flex items-center justify-center shrink-0">
+                      <CalendarClock className="w-4 h-4 text-moss" />
+                    </div>
+                    <div className="text-xs leading-tight">
+                      {done ? (
+                        <div className="font-medium text-moss">Goal reached. 🌱</div>
+                      ) : monthlySavings <= 0 ? (
+                        <>
+                          <div className="font-medium">Set a salary & savings %</div>
+                          <div className="text-muted-foreground">to see months-to-goal.</div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="font-medium" data-testid={`goal-months-${g.id}`}>
+                            {eta} at {fmtMoney(monthlySavings, user?.currency)}/mo
+                          </div>
+                          <div className="text-muted-foreground">
+                            {fmtMoney(remaining, user?.currency)} to go
+                            {deadlineMonths != null && (
+                              <span className={onTrack ? "text-moss ml-1" : "text-terracotta ml-1"}>
+                                {" · "}
+                                {onTrack
+                                  ? `on track (${deadlineMonths} mo left)`
+                                  : `${months - deadlineMonths} mo behind deadline`}
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="flex gap-2">
                     <Button variant="outline" className="rounded-full" onClick={() => contribute(g, 50)} data-testid={`add50-${g.id}`}>+50</Button>
                     <Button variant="outline" className="rounded-full" onClick={() => contribute(g, 100)} data-testid={`add100-${g.id}`}>+100</Button>
@@ -145,4 +192,21 @@ export default function Goals() {
       )}
     </div>
   );
+}
+
+function etaLabel(months) {
+  if (months <= 1) return "≈ 1 month to go";
+  if (months < 12) return `≈ ${months} months to go`;
+  const y = Math.floor(months / 12);
+  const m = months % 12;
+  if (m === 0) return `≈ ${y} ${y === 1 ? "year" : "years"} to go`;
+  return `≈ ${y}y ${m}m to go`;
+}
+
+function monthsUntil(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d)) return null;
+  const now = new Date();
+  const diff = (d.getFullYear() - now.getFullYear()) * 12 + (d.getMonth() - now.getMonth());
+  return Math.max(0, diff);
 }
