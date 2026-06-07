@@ -1,0 +1,76 @@
+{
+  "theme": "Light",
+  "archetype": "1 (Organic & Earthy)",
+  "emotional_tone": "Trustworthy, warm, grounded, distinctive",
+  "colors": {
+    "background_base": "#F4F7F4",
+    "surface": "#FFFFFF",
+    "border": "#E5E8E5",
+    "text_primary": "#1A1E1C",
+    "text_secondary": "#6D7570",
+    "primary_brand": "#2C4C3B",
+    "primary_brand_hover": "#213A2C",
+    "accent_terracotta": "#C86A53",
+    "warning_ochre": "#D9984A",
+    "success_green": "#3E6B52"
+  },
+  "typography": {
+    "headings": {
+      "family": "Outfit, sans-serif",
+      "weights": ["400", "500", "700"],
+      "tracking": "tracking-tight"
+    },
+    "body": {
+      "family": "Manrope, sans-serif",
+      "weights": ["400", "500", "600"]
+    },
+    "monospace": {
+      "family": "JetBrains Mono, monospace"
+    }
+  },
+  "layout": {
+    "spacing_system": "Generous (p-6, p-8, p-12) to feel premium and uncluttered",
+    "dashboard_grid": "Control Room Grid: grid-cols-1 md:grid-cols-3 lg:grid-cols-4 with gap-6",
+    "border_radius": "Cards: rounded-2xl, Buttons: rounded-full or rounded-xl for organic feel"
+  },
+  "component_rules": {
+    "cards": "Flat solid background (#FFFFFF), 1px subtle border (#E5E8E5). Hover: slight lift (-translate-y-1) and shadow-lg.",
+    "buttons": "Primary CTA uses Deep Moss Green (#2C4C3B) with pure white text. Hover state must explicitly lighten or darken.",
+    "inputs": "Shadcn components heavily customized. Soft borders, rounded-xl, high contrast focus states.",
+    "charts": "Use Recharts. Use natural palette: Moss Green for savings/income, Terracotta for expenses, Ochre for needs. NO generic violet/blue.",
+    "ai_advisor": "Do not use generic 'robot' or 'sparkle' icon. Use a leaf or organic shape. Assistant chat bubbles in pale sage (#F4F7F4) with dark text."
+  },
+  "motion": {
+    "hover": "Subtle translate-y and box-shadow changes.",
+    "transitions": "transition-all duration-300 ease-in-out"
+  },
+  "media": {
+    "image_urls": [
+      {
+        "category": "branding_logo_inspiration",
+        "url": "https://images.unsplash.com/photo-1501004318641-b39e6451bec6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHwxfHxtaW5pbWFsaXN0JTIwbGVhZiUyMGxvZ28lMjB3aGl0ZSUyMGJhY2tncm91bmR8ZW58MHx8fHwxNzgwODE4NDg3fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Minimalist leaf graphic for brand identity."
+      },
+      {
+        "category": "login_background",
+        "url": "https://images.pexels.com/photos/29939375/pexels-photo-29939375.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Minimalist green gradient corner for auth pages."
+      },
+      {
+        "category": "user_profile_placeholder",
+        "url": "https://images.unsplash.com/photo-1766937537773-07e8e794771d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODh8MHwxfHNlYXJjaHwyfHxwZXJzb24lMjBwb3J0cmFpdCUyMHdhcm0lMjBzdW5saWdodCUyMGNvZmZlZXxlbnwwfHx8fDE3ODA4MTg0ODd8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Warm sunlight user portrait."
+      }
+    ]
+  },
+  "pages": {
+    "dashboard": "Overview with total balance, monthly income/expense summary, 50/30/20 rule visual breakdown, recent transactions, and AI advisor widget.",
+    "auth": "Split layout. Left: minimal login form. Right: image background with welcoming text.",
+    "budget": "Detailed view of category allocations. Card-based layout."
+  },
+  "icons": {
+    "library": "lucide-react",
+    "style": "Clean, unembellished strokes."
+  },
+  "instructions_to_main_agent": "Ensure 'Outfit' and 'Manrope' fonts are loaded via Google Fonts. Use Tailwind config to set custom colors. Implement layout using generous padding (p-6, p-8) and rounded-2xl cards. Apply data-testid to all interactive elements."
+}
