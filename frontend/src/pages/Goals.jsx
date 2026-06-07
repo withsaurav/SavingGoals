@@ -210,8 +210,8 @@ function GoalCard({ g, settings, currency, onContribute, onDelete }) {
               value={[extra]}
               onValueChange={(v) => setExtra(v[0])}
               min={0}
-              max={1000}
-              step={25}
+              max={100000}
+              step={500}
               data-testid={`whatif-slider-${g.id}`}
             />
             <div className="flex justify-between items-center text-xs">
