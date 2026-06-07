@@ -100,6 +100,7 @@ class TransactionIn(BaseModel):
     bucket: Literal["needs", "wants", "savings", "income"] = "needs"
     note: str = ""
     date: str  # ISO date string YYYY-MM-DD
+    goal_id: Optional[str] = None  # only meaningful for savings bucket
 
 class TransactionOut(TransactionIn):
     id: str
@@ -200,7 +201,26 @@ async def create_tx(data: TransactionIn, user: dict = Depends(get_current_user))
     }
     if tx["type"] == "income":
         tx["bucket"] = "income"
+        tx["goal_id"] = None
+
+    # Validate goal_id (only meaningful for savings expenses)
+    if tx["goal_id"]:
+        if tx["type"] != "expense" or tx["bucket"] != "savings":
+            tx["goal_id"] = None  # ignore on non-savings rows
+        else:
+            goal = await db.goals.find_one({"id": tx["goal_id"], "user_id": user["id"]})
+            if not goal:
+                raise HTTPException(status_code=400, detail="Selected goal not found")
+
     await db.transactions.insert_one(tx)
+
+    # Credit the goal's saved_amount
+    if tx.get("goal_id"):
+        await db.goals.update_one(
+            {"id": tx["goal_id"], "user_id": user["id"]},
+            {"$inc": {"saved_amount": tx["amount"]}},
+        )
+
     tx.pop("_id", None)
     return tx
 
@@ -214,9 +234,16 @@ async def list_tx(month: Optional[str] = None, user: dict = Depends(get_current_
 
 @api.delete("/transactions/{tx_id}")
 async def delete_tx(tx_id: str, user: dict = Depends(get_current_user)):
-    res = await db.transactions.delete_one({"id": tx_id, "user_id": user["id"]})
-    if res.deleted_count == 0:
+    tx = await db.transactions.find_one({"id": tx_id, "user_id": user["id"]})
+    if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
+    await db.transactions.delete_one({"id": tx_id, "user_id": user["id"]})
+    # Reverse the goal credit if applicable
+    if tx.get("goal_id"):
+        await db.goals.update_one(
+            {"id": tx["goal_id"], "user_id": user["id"]},
+            {"$inc": {"saved_amount": -tx["amount"]}},
+        )
     return {"ok": True}
 
 # -- Savings Goals --

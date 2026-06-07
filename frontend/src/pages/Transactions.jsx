@@ -23,6 +23,7 @@ const BUCKETS_FOR_CATEGORY = {
 export default function Transactions() {
   const { user } = useAuth();
   const [txs, setTxs] = useState([]);
+  const [goals, setGoals] = useState([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     type: "expense",
@@ -31,11 +32,13 @@ export default function Transactions() {
     bucket: "needs",
     note: "",
     date: todayISO(),
+    goal_id: "",
   });
 
   const load = useCallback(async () => {
-    const { data } = await api.get("/transactions");
-    setTxs(data);
+    const [t, g] = await Promise.all([api.get("/transactions"), api.get("/goals")]);
+    setTxs(t.data);
+    setGoals(g.data);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -49,7 +52,10 @@ export default function Transactions() {
       if (k === "type") {
         next.category = v === "expense" ? "Groceries" : "Bonus";
         next.bucket = v === "expense" ? "needs" : "income";
+        next.goal_id = "";
       }
+      // Clear goal when leaving savings bucket
+      if (k === "bucket" && v !== "savings") next.goal_id = "";
       return next;
     });
   };
@@ -57,10 +63,19 @@ export default function Transactions() {
   const submit = async (e) => {
     e.preventDefault();
     try {
-      await api.post("/transactions", { ...form, amount: Number(form.amount) });
-      toast.success("Transaction added");
+      const payload = {
+        ...form,
+        amount: Number(form.amount),
+        goal_id: form.bucket === "savings" && form.goal_id ? form.goal_id : null,
+      };
+      await api.post("/transactions", payload);
+      toast.success(
+        payload.goal_id
+          ? `Saved! ${fmtMoney(payload.amount, user?.currency)} added to your goal.`
+          : "Transaction added"
+      );
       setOpen(false);
-      setForm((f) => ({ ...f, amount: "", note: "" }));
+      setForm((f) => ({ ...f, amount: "", note: "", goal_id: "" }));
       load();
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail));
@@ -141,6 +156,32 @@ export default function Transactions() {
                 <Label>Date</Label>
                 <Input type="date" value={form.date} onChange={(e) => onChange("date", e.target.value)} className="rounded-xl" data-testid="tx-date-input" />
               </div>
+              {form.type === "expense" && form.bucket === "savings" && (
+                <div className="space-y-2 rounded-xl bg-sage border border-moss/20 p-3">
+                  <Label className="text-moss">Apply to goal</Label>
+                  {goals.length === 0 ? (
+                    <div className="text-xs text-muted-foreground">
+                      Create a goal first to credit this savings transaction.
+                    </div>
+                  ) : (
+                    <Select value={form.goal_id} onValueChange={(v) => onChange("goal_id", v)}>
+                      <SelectTrigger className="rounded-xl bg-white" data-testid="tx-goal-select">
+                        <SelectValue placeholder="Choose a goal…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {goals.map((g) => (
+                          <SelectItem key={g.id} value={g.id}>
+                            {g.name} ({fmtMoney(g.saved_amount, user?.currency)} / {fmtMoney(g.target_amount, user?.currency)})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <div className="text-xs text-muted-foreground">
+                    The amount will be added to this goal's saved balance.
+                  </div>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Note</Label>
                 <Input value={form.note} onChange={(e) => onChange("note", e.target.value)} className="rounded-xl" data-testid="tx-note-input" />
@@ -160,22 +201,33 @@ export default function Transactions() {
             <div className="text-sm text-muted-foreground py-6">Nothing logged yet.</div>
           ) : (
             <ul className="divide-y divide-border" data-testid="tx-list">
-              {txs.map((t) => (
-                <li key={t.id} className="py-3 flex items-center justify-between gap-4">
-                  <div>
-                    <div className="font-medium">{t.category} <span className="text-xs text-muted-foreground capitalize ml-2 px-2 py-0.5 bg-sage rounded-full">{t.bucket}</span></div>
-                    <div className="text-xs text-muted-foreground">{t.note || "—"} · {t.date}</div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className={t.type === "expense" ? "text-terracotta font-mono" : "text-moss font-mono"}>
-                      {t.type === "expense" ? "−" : "+"}{fmtMoney(t.amount, user?.currency)}
-                    </span>
-                    <Button size="icon" variant="ghost" onClick={() => del(t.id)} data-testid={`del-tx-${t.id}`}>
-                      <Trash2 className="w-4 h-4 text-muted-foreground" />
-                    </Button>
-                  </div>
-                </li>
-              ))}
+              {txs.map((t) => {
+                const goal = t.goal_id ? goals.find((g) => g.id === t.goal_id) : null;
+                return (
+                  <li key={t.id} className="py-3 flex items-center justify-between gap-4">
+                    <div>
+                      <div className="font-medium">
+                        {t.category}
+                        <span className="text-xs text-muted-foreground capitalize ml-2 px-2 py-0.5 bg-sage rounded-full">{t.bucket}</span>
+                        {goal && (
+                          <span className="text-xs text-moss ml-2 px-2 py-0.5 bg-moss/10 rounded-full" data-testid={`tx-goal-tag-${t.id}`}>
+                            → {goal.name}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{t.note || "—"} · {t.date}</div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={t.type === "expense" ? "text-terracotta font-mono" : "text-moss font-mono"}>
+                        {t.type === "expense" ? "−" : "+"}{fmtMoney(t.amount, user?.currency)}
+                      </span>
+                      <Button size="icon" variant="ghost" onClick={() => del(t.id)} data-testid={`del-tx-${t.id}`}>
+                        <Trash2 className="w-4 h-4 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </CardContent>
