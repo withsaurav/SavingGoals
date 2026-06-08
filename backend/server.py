@@ -13,8 +13,7 @@ import jwt as pyjwt
 import resend
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
-
-from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+import anthropic
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends
 from fastapi.responses import StreamingResponse
