@@ -29,55 +29,48 @@ import hashlib
 # -- Razorpay Setup --
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "")
 RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "")
-RAZORPAY_MONTHLY_PLAN_ID = os.environ.get("RAZORPAY_MONTHLY_PLAN_ID", "")
-RAZORPAY_YEARLY_PLAN_ID = os.environ.get("RAZORPAY_YEARLY_PLAN_ID", "")
+RAZORPAY_AMOUNT = int(os.environ.get("RAZORPAY_AMOUNT", "49900"))  # ₹499 in paise
 
 rzp_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
-# -- Subscription Models --
-class CreateSubscriptionIn(BaseModel):
-    plan: Literal["monthly", "yearly"]
+# -- Payment Models --
+class CreateOrderIn(BaseModel):
+    amount: Optional[int] = None  # in paise, fallback to env default
 
 # -- Razorpay Routes --
-@api.post("/payments/create-subscription")
-async def create_subscription(
-    data: CreateSubscriptionIn,
-    user: dict = Depends(get_current_user)
-):
-    plan_id = RAZORPAY_MONTHLY_PLAN_ID if data.plan == "monthly" else RAZORPAY_YEARLY_PLAN_ID
-    if not plan_id:
-        raise HTTPException(status_code=500, detail="Payment plan not configured")
+@api.post("/payments/create-order")
+async def create_order(user: dict = Depends(get_current_user)):
     try:
-        subscription = rzp_client.subscription.create({
-            "plan_id": plan_id,
-            "customer_notify": 1,
-            "total_count": 12 if data.plan == "monthly" else 1,
+        order = rzp_client.order.create({
+            "amount": RAZORPAY_AMOUNT,
+            "currency": "INR",
+            "receipt": f"receipt_{user['id'][:8]}",
             "notes": {
                 "user_id": user["id"],
                 "email": user["email"],
-                "plan": data.plan
             }
         })
         return {
-            "subscription_id": subscription["id"],
+            "order_id": order["id"],
+            "amount": order["amount"],
+            "currency": order["currency"],
             "razorpay_key": RAZORPAY_KEY_ID,
             "user_name": user["name"],
             "user_email": user["email"],
-            "plan": data.plan
         }
     except Exception as e:
-        logger.exception("Razorpay subscription creation failed")
+        logger.exception("Razorpay order creation failed")
         raise HTTPException(status_code=500, detail=str(e))
 
 @api.post("/payments/verify")
 async def verify_payment(request: Request, user: dict = Depends(get_current_user)):
     body = await request.json()
     razorpay_payment_id = body.get("razorpay_payment_id", "")
-    razorpay_subscription_id = body.get("razorpay_subscription_id", "")
+    razorpay_order_id = body.get("razorpay_order_id", "")
     razorpay_signature = body.get("razorpay_signature", "")
 
-    # Verify signature
-    msg = f"{razorpay_payment_id}|{razorpay_subscription_id}"
+    # Verify signature — prevents fake payment confirmations
+    msg = f"{razorpay_order_id}|{razorpay_payment_id}"
     expected = hmac.new(
         RAZORPAY_KEY_SECRET.encode(),
         msg.encode(),
@@ -87,49 +80,28 @@ async def verify_payment(request: Request, user: dict = Depends(get_current_user
     if not hmac.compare_digest(expected, razorpay_signature):
         raise HTTPException(status_code=400, detail="Invalid payment signature")
 
-    # Update user as subscribed in MongoDB
-    plan = body.get("plan", "monthly")
-    expiry = datetime.now(timezone.utc) + (
-        timedelta(days=30) if plan == "monthly" else timedelta(days=365)
-    )
+    # Unlock lifetime access in MongoDB
     await db.users.update_one(
         {"id": user["id"]},
         {"$set": {
             "is_subscribed": True,
-            "plan": plan,
-            "subscription_id": razorpay_subscription_id,
-            "subscription_expires_at": expiry.isoformat(),
-            "subscribed_at": datetime.now(timezone.utc).isoformat(),
+            "plan": "lifetime",
+            "payment_id": razorpay_payment_id,
+            "order_id": razorpay_order_id,
+            "paid_at": datetime.now(timezone.utc).isoformat(),
+            "paid_amount": RAZORPAY_AMOUNT / 100,  # convert paise to ₹
         }}
     )
-    logger.info("User %s subscribed to %s plan", user["email"], plan)
-    return {"ok": True, "plan": plan, "expires_at": expiry.isoformat()}
+    logger.info("User %s made one-time payment", user["email"])
+    return {"ok": True, "plan": "lifetime"}
 
 @api.get("/payments/status")
 async def payment_status(user: dict = Depends(get_current_user)):
     return {
         "is_subscribed": user.get("is_subscribed", False),
         "plan": user.get("plan", None),
-        "expires_at": user.get("subscription_expires_at", None),
+        "paid_at": user.get("paid_at", None),
     }
-
-@api.post("/payments/cancel")
-async def cancel_subscription(user: dict = Depends(get_current_user)):
-    sub_id = user.get("subscription_id")
-    if not sub_id:
-        raise HTTPException(status_code=400, detail="No active subscription found")
-    try:
-        rzp_client.subscription.cancel(sub_id, {"cancel_at_cycle_end": 1})
-        await db.users.update_one(
-            {"id": user["id"]},
-            {"$set": {"is_subscribed": False, "plan": None}}
-        )
-        return {"ok": True, "message": "Subscription cancelled"}
-    except Exception as e:
-        logger.exception("Razorpay cancel failed")
-        raise HTTPException(status_code=500, detail=str(e))
-        
-
 
 # -- Setup --
 JWT_ALGORITHM = "HS256"
