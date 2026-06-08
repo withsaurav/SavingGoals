@@ -662,6 +662,11 @@ async def set_active_month(data: ActiveMonthIn, user: dict = Depends(get_current
 
 
 # -- AI Advisor (Claude streaming) --
+
+# -- AI Advisor (Claude streaming) --
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
 def _build_context_str(user: dict, snapshot: dict) -> str:
     cur = user.get("currency", "USD")
     return (
@@ -685,20 +690,17 @@ async def advisor_chat(data: AdvisorIn, user: dict = Depends(get_current_user)):
         f"Current snapshot: {ctx}"
     )
 
-    chat = LlmChat(
-        api_key=EMERGENT_LLM_KEY,
-        session_id=f"advisor-{user['id']}",
-        system_message=system_msg,
-    ).with_model("anthropic", "claude-sonnet-4-5-20250929")
-
     async def event_gen():
         try:
-            async for ev in chat.stream_message(UserMessage(text=data.message)):
-                if isinstance(ev, TextDelta):
-                    yield f"data: {ev.content}\n\n"
-                elif isinstance(ev, StreamDone):
-                    yield "data: [DONE]\n\n"
-                    break
+            with anthropic_client.messages.stream(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=500,
+                system=system_msg,
+                messages=[{"role": "user", "content": data.message}],
+            ) as stream:
+                for text in stream.text_stream:
+                    yield f"data: {text}\n\n"
+                yield "data: [DONE]\n\n"
         except Exception as e:
             logger.exception("advisor error")
             yield f"data: [ERROR] {str(e)}\n\n"
@@ -711,7 +713,6 @@ async def advisor_chat(data: AdvisorIn, user: dict = Depends(get_current_user)):
 
 @api.post("/advisor/ask")
 async def advisor_ask(data: AdvisorIn, user: dict = Depends(get_current_user)):
-    """Non-streaming version that aggregates the full reply."""
     snapshot = await dashboard(user)
     ctx = _build_context_str(user, snapshot)
     system_msg = (
@@ -720,19 +721,18 @@ async def advisor_ask(data: AdvisorIn, user: dict = Depends(get_current_user)):
         "specific, actionable advice. Keep replies under 180 words. "
         f"Current snapshot: {ctx}"
     )
-    chat = LlmChat(
-        api_key=EMERGENT_LLM_KEY,
-        session_id=f"advisor-{user['id']}",
-        system_message=system_msg,
-    ).with_model("anthropic", "claude-sonnet-4-5-20250929")
+    response = anthropic_client.messages.create(
+        model="claude-sonnet-4-5-20250929",
+        max_tokens=500,
+        system=system_msg,
+        messages=[{"role": "user", "content": data.message}],
+    )
+    return {"reply": response.content[0].text}
 
-    parts = []
-    async for ev in chat.stream_message(UserMessage(text=data.message)):
-        if isinstance(ev, TextDelta):
-            parts.append(ev.content)
-        elif isinstance(ev, StreamDone):
-            break
-    return {"reply": "".join(parts)}
+
+
+
+
 
 # -- Startup --
 @app.on_event("startup")
