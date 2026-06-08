@@ -13,7 +13,7 @@ import jwt as pyjwt
 import resend
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
-import anthropic
+
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends
 from fastapi.responses import StreamingResponse
@@ -663,9 +663,15 @@ async def set_active_month(data: ActiveMonthIn, user: dict = Depends(get_current
 
 # -- AI Advisor (Claude streaming) --
 
-# -- AI Advisor (Claude streaming) --
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+# -- AI Advisor (Gemini) --
+import google.generativeai as genai
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+genai.configure(api_key=GEMINI_API_KEY)
+gemini_model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash",
+    generation_config={"max_output_tokens": 500, "temperature": 0.7},
+)
 
 def _build_context_str(user: dict, snapshot: dict) -> str:
     cur = user.get("currency", "USD")
@@ -682,25 +688,27 @@ def _build_context_str(user: dict, snapshot: dict) -> str:
 async def advisor_chat(data: AdvisorIn, user: dict = Depends(get_current_user)):
     snapshot = await dashboard(user)
     ctx = _build_context_str(user, snapshot)
-    system_msg = (
+    prompt = (
         "You are Sage, a friendly, encouraging personal finance advisor. "
         "Speak in clear, warm, concise prose (no bullet lists unless asked). "
         "Use the user's live budget snapshot to give specific, actionable, "
-        "non-judgmental advice. Keep replies under 180 words. "
-        f"Current snapshot: {ctx}"
+        "non-judgmental advice. Keep replies under 180 words.\n\n"
+        f"Current snapshot: {ctx}\n\n"
+        f"User message: {data.message}"
     )
 
     async def event_gen():
         try:
-            with anthropic_client.messages.stream(
-                model="claude-sonnet-4-5-20250929",
-                max_tokens=500,
-                system=system_msg,
-                messages=[{"role": "user", "content": data.message}],
-            ) as stream:
-                for text in stream.text_stream:
-                    yield f"data: {text}\n\n"
-                yield "data: [DONE]\n\n"
+            response = await asyncio.to_thread(
+                gemini_model.generate_content, prompt
+            )
+            text = response.text
+            # Stream word by word for a nice effect
+            words = text.split(" ")
+            for word in words:
+                yield f"data: {word} \n\n"
+                await asyncio.sleep(0.03)
+            yield "data: [DONE]\n\n"
         except Exception as e:
             logger.exception("advisor error")
             yield f"data: [ERROR] {str(e)}\n\n"
@@ -715,25 +723,19 @@ async def advisor_chat(data: AdvisorIn, user: dict = Depends(get_current_user)):
 async def advisor_ask(data: AdvisorIn, user: dict = Depends(get_current_user)):
     snapshot = await dashboard(user)
     ctx = _build_context_str(user, snapshot)
-    system_msg = (
+    prompt = (
         "You are Sage, a friendly, encouraging personal finance advisor. "
         "Speak in clear, warm, concise prose. Use the user's live snapshot for "
-        "specific, actionable advice. Keep replies under 180 words. "
-        f"Current snapshot: {ctx}"
+        "specific, actionable advice. Keep replies under 180 words.\n\n"
+        f"Current snapshot: {ctx}\n\n"
+        f"User message: {data.message}"
     )
-    response = anthropic_client.messages.create(
-        model="claude-sonnet-4-5-20250929",
-        max_tokens=500,
-        system=system_msg,
-        messages=[{"role": "user", "content": data.message}],
+    response = await asyncio.to_thread(
+        gemini_model.generate_content, prompt
     )
-    return {"reply": response.content[0].text}
+    return {"reply": response.text}
 
-
-
-
-
-
+    
 # -- Startup --
 @app.on_event("startup")
 async def startup():
