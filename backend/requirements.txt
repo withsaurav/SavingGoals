@@ -122,3 +122,5 @@ websockets==16.0
 yarl==1.24.2
 zipp==4.1.0
 razorpay==1.4.2
+anthropic==0.40.0
+litellm==1.67.0
