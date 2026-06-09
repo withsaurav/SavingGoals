@@ -4,7 +4,7 @@ motor==3.3.1
 pymongo==4.5.0
 python-dotenv==1.2.2
 bcrypt==4.1.3
-pyjwt==2.13.0
+PyJWT==2.13.0
 python-jose==3.5.0
 passlib==1.7.4
 python-multipart==0.0.30
@@ -13,12 +13,12 @@ email-validator==2.3.0
 starlette==0.37.2
 httpx==0.28.1
 resend==2.30.1
-google-generativeai
 razorpay==1.4.2
 stripe==14.4.1
 boto3
 anyio==4.13.0
 python-dateutil==2.9.0.post0
 requests==2.34.2
-cryptography==48.0.0
+cryptography
 dnspython==2.8.0
+aiohttp==3.14.0
