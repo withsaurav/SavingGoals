@@ -663,15 +663,8 @@ async def set_active_month(data: ActiveMonthIn, user: dict = Depends(get_current
 
 # -- AI Advisor (Claude streaming) --
 
-# -- AI Advisor (Gemini) --
-import google.generativeai as genai
-
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-genai.configure(api_key=GEMINI_API_KEY)
-gemini_model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    generation_config={"max_output_tokens": 500, "temperature": 0.7},
-)
+# -- AI Advisor (OpenRouter) --
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
 def _build_context_str(user: dict, snapshot: dict) -> str:
     cur = user.get("currency", "USD")
@@ -684,28 +677,43 @@ def _build_context_str(user: dict, snapshot: dict) -> str:
         f"Budgets: {snapshot['budgets']}."
     )
 
+async def call_openrouter(prompt: str, system: str) -> str:
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "meta-llama/llama-3.1-8b-instruct:free",
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+                "max_tokens": 500,
+            },
+        )
+        data = response.json()
+        return data["choices"][0]["message"]["content"]
+
 @api.post("/advisor/chat")
 async def advisor_chat(data: AdvisorIn, user: dict = Depends(get_current_user)):
     snapshot = await dashboard(user)
     ctx = _build_context_str(user, snapshot)
-    prompt = (
+    system_msg = (
         "You are Sage, a friendly, encouraging personal finance advisor. "
         "Speak in clear, warm, concise prose (no bullet lists unless asked). "
         "Use the user's live budget snapshot to give specific, actionable, "
-        "non-judgmental advice. Keep replies under 180 words.\n\n"
-        f"Current snapshot: {ctx}\n\n"
-        f"User message: {data.message}"
+        "non-judgmental advice. Keep replies under 180 words. "
+        f"Current snapshot: {ctx}"
     )
 
     async def event_gen():
         try:
-            response = await asyncio.to_thread(
-                gemini_model.generate_content, prompt
-            )
-            text = response.text
-            # Stream word by word for a nice effect
-            words = text.split(" ")
-            for word in words:
+            reply = await call_openrouter(data.message, system_msg)
+            # Stream word by word for nice effect
+            for word in reply.split(" "):
                 yield f"data: {word} \n\n"
                 await asyncio.sleep(0.03)
             yield "data: [DONE]\n\n"
@@ -723,17 +731,14 @@ async def advisor_chat(data: AdvisorIn, user: dict = Depends(get_current_user)):
 async def advisor_ask(data: AdvisorIn, user: dict = Depends(get_current_user)):
     snapshot = await dashboard(user)
     ctx = _build_context_str(user, snapshot)
-    prompt = (
+    system_msg = (
         "You are Sage, a friendly, encouraging personal finance advisor. "
         "Speak in clear, warm, concise prose. Use the user's live snapshot for "
-        "specific, actionable advice. Keep replies under 180 words.\n\n"
-        f"Current snapshot: {ctx}\n\n"
-        f"User message: {data.message}"
+        "specific, actionable advice. Keep replies under 180 words. "
+        f"Current snapshot: {ctx}"
     )
-    response = await asyncio.to_thread(
-        gemini_model.generate_content, prompt
-    )
-    return {"reply": response.text}
+    reply = await call_openrouter(data.message, system_msg)
+    return {"reply": reply}
 
     
 # -- Startup --
